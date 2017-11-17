@@ -33,6 +33,7 @@ public class RNCameraRollModule extends ReactContextBaseJavaModule {
     private static final String ERROR_INVALID_ASSET_TYPE = "E_INVALID_ASSET_TYPE";
     private static final String ERROR_PERMISSION_DENIED = "E_PERMISSION_DENIED";
     private static final String ERROR_UNABLE_TO_LOAD = "E_UNABLE_TO_LOAD";
+    private static String[] thumbColumns = { MediaStore.Video.Thumbnails.DATA };
 
     private static final String[] FIELDS = new String[] {
         Images.Media._ID,
@@ -129,12 +130,12 @@ public class RNCameraRollModule extends ReactContextBaseJavaModule {
                         query.toString(),
                         queryArgs.toArray(new String[queryArgs.size()]),
                         Images.Media.DATE_TAKEN + " DESC, " + Images.Media.DATE_MODIFIED +
-                            " DESC LIMIT " + (mLimit + 1));
+                                " DESC LIMIT " + (mLimit + 1));
                 if (assetsCursor == null) {
                     mPromise.reject(ERROR_UNABLE_TO_LOAD, "Could not get assets");
                 } else {
                     try {
-                        response.putArray("assets", buildAssets(assetsCursor, response, mLimit));
+                        response.putArray("assets", buildAssets(assetsCursor, response, mLimit, mContext));
                         response.putMap("page_info", buildPageInfo(assetsCursor, response, mLimit));
                     } finally {
                         assetsCursor.close();
@@ -162,7 +163,7 @@ public class RNCameraRollModule extends ReactContextBaseJavaModule {
     }
 
     private static WritableArray buildAssets(Cursor assetsCursor, WritableMap response,
-        int limit) {
+                                             int limit, Context mContext) {
         assetsCursor.moveToFirst();
         int idIndex = assetsCursor.getColumnIndex(Images.Media._ID);
         int mimeTypeIndex = assetsCursor.getColumnIndex(Images.Media.MIME_TYPE);
@@ -188,9 +189,14 @@ public class RNCameraRollModule extends ReactContextBaseJavaModule {
                 asset.putString("uri", photoUri.toString());
                 asset.putString("type", "image");
             } else {
+
+                String thumb_path = getThumbnailPathForLocalFile(mContext, assetsCursor.getInt(idIndex));
+
                 Uri videoUri = Uri.withAppendedPath(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                         assetsCursor.getString(idIndex));
+
                 asset.putString("uri", videoUri.toString());
+                asset.putString("thumbnail", "file://"+thumb_path);
                 asset.putString("type", "video");
             }
 
@@ -208,4 +214,30 @@ public class RNCameraRollModule extends ReactContextBaseJavaModule {
         }
         return assets;
     }
+
+    public static String getThumbnailPathForLocalFile(Context mContext, int fileId) {
+
+        MediaStore.Video.Thumbnails.getThumbnail(mContext.getContentResolver(), fileId, MediaStore.Video.Thumbnails.MICRO_KIND, null);
+
+        Cursor thumbCursor = null;
+        try {
+
+            thumbCursor = mContext.getContentResolver().query(
+                    MediaStore.Video.Thumbnails.EXTERNAL_CONTENT_URI,
+                    thumbColumns, MediaStore.Video.Thumbnails.VIDEO_ID + " = "
+                            + fileId, null, null);
+
+            if (thumbCursor.moveToFirst()) {
+                String thumbPath = thumbCursor.getString(thumbCursor
+                        .getColumnIndex(MediaStore.Video.Thumbnails.DATA));
+
+                return thumbPath;
+            }
+
+        } finally {
+        }
+
+        return null;
+    }
+
 }
